@@ -191,7 +191,10 @@
                 sidebar.classList.remove('closed');
                 sidebar.classList.add('open');
                 mobileOverlay.classList.remove('hidden');
-                setTimeout(() => searchInput.focus(), 300);
+                // Only auto-focus on larger screens to prevent mobile keyboard from popping up
+                if (window.innerWidth >= 768) {
+                    setTimeout(() => searchInput.focus(), 300);
+                }
             }
         }
 
