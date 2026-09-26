@@ -14,10 +14,14 @@ document.addEventListener('DOMContentLoaded', () => {
     
     let allChannels = [];
     let hls = null;
-    let player = null;
     let topBarTimeout;
 
-    // 1. Fetch & Parse Playlist
+    // 1. Initialize Plyr ONCE globally
+    const player = new Plyr(video, {
+        controls: ['play', 'mute', 'volume', 'fullscreen']
+    });
+
+    // 2. Fetch & Parse Playlist
     fetch(playlistUrl)
         .then(res => res.text())
         .then(data => {
@@ -45,13 +49,12 @@ document.addEventListener('DOMContentLoaded', () => {
             statusText.textContent = 'Playlist Error';
         });
 
-    // 2. Render Sidebar Buttons
+    // 3. Render Sidebar Buttons
     function renderChannels(channels) {
         channelList.innerHTML = '';
         channels.forEach(channel => {
             const btn = document.createElement('button');
             btn.className = 'channel-btn w-full text-left p-3.5 border-b border-gray-800 text-white hover:bg-gray-800 flex items-center transition cursor-pointer';
-            // Inject the fixed channel ID and Name
             btn.innerHTML = `<span class="text-gray-500 font-mono w-10 shrink-0 text-sm">${channel.id}.</span> <span>${channel.name}</span>`;
             
             btn.onclick = () => playStream(channel.name, channel.url, btn);
@@ -59,14 +62,14 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 3. Search Filter (Keeps original numbers intact)
+    // 4. Search Filter
     searchInput.addEventListener('input', (e) => {
         const term = e.target.value.toLowerCase();
         const filtered = allChannels.filter(c => c.name.toLowerCase().includes(term));
         renderChannels(filtered);
     });
 
-    // 4. Playback Logic & Stream Switching
+    // 5. Playback Logic & Stream Switching
     function playStream(name, url, btnElement) {
         statusText.textContent = `Loading: ${name}...`;
         
@@ -85,18 +88,15 @@ document.addEventListener('DOMContentLoaded', () => {
             sidebar.classList.remove('open');
         }
 
-        // DESTROY OLD STREAMS to prevent infinite loading
-        if (player) { player.destroy(); player = null; }
-        if (hls) { hls.destroy(); hls = null; }
+        // DESTROY OLD HLS STREAM ONLY (Leave Plyr intact)
+        if (hls) { 
+            hls.destroy(); 
+            hls = null; 
+        }
         
+        video.pause();
         video.removeAttribute('src');
         video.load();
-
-        // Plyr Configuration
-        const defaultOptions = {
-            controls: ['play', 'mute', 'volume', 'settings', 'fullscreen'],
-            settings: ['quality']
-        };
 
         if (Hls.isSupported()) {
             hls = new Hls({ maxMaxBufferLength: 30 }); // Optimize buffer for Live TV
@@ -104,18 +104,7 @@ document.addEventListener('DOMContentLoaded', () => {
             hls.attachMedia(video);
             
             hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                // Map HLS qualities into Plyr settings
-                const availableQualities = hls.levels.map(l => l.height);
-                defaultOptions.quality = {
-                    default: availableQualities[availableQualities.length - 1],
-                    options: availableQualities,
-                    forced: true,
-                    onChange: (e) => updateQuality(e)
-                };
-                
-                player = new Plyr(video, defaultOptions);
                 statusText.textContent = `Playing: ${name}`;
-                
                 const playPromise = video.play();
                 if (playPromise !== undefined) {
                     playPromise.catch(error => console.log("Autoplay blocked by browser. Click screen to play."));
@@ -126,31 +115,21 @@ document.addEventListener('DOMContentLoaded', () => {
             hls.on(Hls.Events.ERROR, (event, data) => {
                 if (data.fatal) {
                     statusText.textContent = `Stream Offline: ${name}`;
-                    if(player) player.destroy();
                 }
             });
-
-            window.updateQuality = (newQuality) => {
-                hls.levels.forEach((level, levelIndex) => {
-                    if (level.height === newQuality) hls.currentLevel = levelIndex;
-                });
-            };
 
         } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
             // Safari Native Support Fallback
             video.src = url;
-            player = new Plyr(video, defaultOptions);
-            video.addEventListener('loadedmetadata', () => {
-                statusText.textContent = `Playing: ${name}`;
-                video.play();
-            });
-            video.addEventListener('error', () => {
-                statusText.textContent = `Stream Offline: ${name}`;
-            });
+            statusText.textContent = `Playing: ${name}`;
+            const playPromise = video.play();
+            if (playPromise !== undefined) {
+                playPromise.catch(error => console.log("Autoplay blocked."));
+            }
         }
     }
 
-    // 5. Auto-Play "24 News" Initialization
+    // 6. Auto-Play "24 News" Initialization
     function autoPlay24News() {
         const targetChannel = allChannels.find(c => c.name.toLowerCase().includes('24 news')) || allChannels[0];
         if (targetChannel) {
@@ -160,10 +139,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // 6. UI Interactions (Sidebar & Top Bar)
+    // 7. UI Interactions (Sidebar & Top Bar)
     function toggleMenu() {
         sidebar.classList.toggle('open');
-        // Prevent auto-focusing on mobile so keyboard doesn't pop up
         if (window.innerWidth > 768 && sidebar.classList.contains('open')) {
             searchInput.focus();
         }
@@ -187,7 +165,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.addEventListener(evt, wakeUpTopBar);
     });
 
-    // 7. Android TV Remote (D-Pad) Spatial Navigation
+    // 8. Android TV Remote (D-Pad) Spatial Navigation
     document.addEventListener('keydown', (e) => {
         const active = document.activeElement;
         const isChannelBtn = active.classList.contains('channel-btn');
