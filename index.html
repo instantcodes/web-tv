@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Malayalam TV - Multi-Platform</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- HLS.js for m3u8 playback -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    
+    <!-- Plyr CSS & JS -->
+    <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
+    <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: { 500: '#ef4444', 600: '#dc2626' }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <style>
+        /* TV & Desktop Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #111827; }
+        ::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #ef4444; }
+        
+        body { margin: 0; overflow: hidden; background-color: #000; touch-action: none; }
+        
+        /* Plyr TV & Mobile Overrides */
+        :root {
+            --plyr-color-main: #ef4444;
+            --plyr-video-background: #000;
+            --plyr-control-spacing: 15px; /* Larger tap targets */
+        }
+        .plyr {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0; left: 0;
+        }
+
+        /* Android TV Focus States */
+        .tv-focusable:focus {
+            outline: 3px solid white;
+            outline-offset: -3px;
+            background-color: #dc2626 !important;
+            color: white !important;
+            z-index: 10;
+        }
+
+        /* Sidebar Responsive Behavior */
+        #sidebar {
+            transition: transform 0.3s ease-in-out;
+        }
+        @media (max-width: 767px) {
+            #sidebar.closed { transform: translateX(-100%); }
+            #sidebar.open { transform: translateX(0); }
+        }
+        @media (min-width: 768px) {
+            #sidebar.closed { margin-left: -20rem; }
+            #sidebar.open { margin-left: 0; }
+        }
+    </style>
+</head>
+<body class="text-slate-200 h-screen w-screen flex font-sans select-none">
+
+    <!-- Sidebar: Absolute on Mobile, Relative on Desktop -->
+    <aside id="sidebar" class="open fixed md:relative z-50 h-full w-[20rem] bg-gray-900 border-r border-gray-800 flex flex-col shrink-0 shadow-2xl md:shadow-none">
+        
+        <!-- Search Bar Area -->
+        <div class="p-4 bg-gray-900 border-b border-gray-800 shadow-sm shrink-0 h-[76px] flex items-center">
+            <div class="relative w-full">
+                <input 
+                    type="text" 
+                    id="search-input" 
+                    placeholder="Search channels..." 
+                    class="tv-focusable w-full bg-gray-800 text-white border border-gray-700 rounded-lg py-3 pl-11 pr-4 focus:outline-none transition-colors text-lg"
+                    tabindex="0"
+                >
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-400 absolute left-3 top-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+            </div>
+        </div>
+
+        <!-- Channel List Container -->
+        <div id="channel-list" class="flex-1 overflow-y-auto p-2 space-y-1 pb-20 md:pb-2">
+            <div class="flex items-center justify-center h-full text-gray-400 text-lg">
+                <div class="animate-pulse">Loading playlist...</div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main id="main-area" class="flex-1 bg-black relative flex flex-col h-full overflow-hidden w-full">
+        
+        <!-- Mobile Overlay for Sidebar -->
+        <div id="mobile-overlay" class="fixed inset-0 bg-black/60 z-40 hidden md:hidden transition-opacity"></div>
+
+        <!-- Top Bar Overlay -->
+        <div id="top-bar" class="absolute top-0 left-0 w-full bg-gradient-to-b from-black/95 via-black/70 to-transparent p-4 sm:p-6 flex items-center z-[60] transition-all duration-300 opacity-100 translate-y-0">
+            <!-- Hamburger Menu & App Logo -->
+            <div class="flex items-center gap-4 mr-auto">
+                <button id="toggle-sidebar" class="tv-focusable p-3 bg-black/50 hover:bg-white/20 rounded-lg text-white backdrop-blur-sm transition-colors" title="Toggle Sidebar" tabindex="0">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 6h16M4 12h16M4 18h16" />
+                    </svg>
+                </button>
+                <div class="flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-brand-500 drop-shadow-lg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                    <h1 class="text-2xl font-bold text-white tracking-wide drop-shadow-md hidden sm:block">Malayalam TV</h1>
+                </div>
+            </div>
+
+            <!-- Now Playing Status -->
+            <div class="flex items-center gap-3 bg-black/50 px-5 py-2.5 rounded-full backdrop-blur-md border border-white/10 max-w-[50%]">
+                <span class="relative flex h-3 w-3 shrink-0">
+                  <span id="status-ping" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-500 opacity-75 hidden"></span>
+                  <span id="status-dot" class="relative inline-flex rounded-full h-3 w-3 bg-gray-500"></span>
+                </span>
+                <span id="now-playing-title" class="text-base font-bold text-white truncate">Select a channel</span>
+            </div>
+        </div>
+
+        <!-- Video Player Wrapper -->
+        <div id="video-container" class="relative w-full h-full z-10 flex items-center justify-center bg-black">
+            <video id="video-player" playsinline controls></video>
+        </div>
+        
+        <!-- Loading overlay -->
+        <div id="video-loading" class="absolute inset-0 bg-black/80 flex items-center justify-center hidden pointer-events-none z-30">
+            <div class="flex flex-col items-center">
+                <svg class="animate-spin h-12 w-12 text-brand-500 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span id="loading-text" class="text-gray-200 font-medium tracking-wider text-lg">Tuning channel...</span>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const PLAYLIST_URL = 'https://iptv-org.github.io/iptv/languages/mal.m3u';
+        let channels = [];
+        let hls = null;
+        let player = null; 
+        let activeChannelBtn = null;
+        let hideTopBarTimeout = null;
+
+        // DOM Elements
+        const videoContainer = document.getElementById('video-container');
+        const channelListContainer = document.getElementById('channel-list');
+        const searchInput = document.getElementById('search-input');
+        const topBar = document.getElementById('top-bar');
+        const nowPlayingTitle = document.getElementById('now-playing-title');
+        const statusPing = document.getElementById('status-ping');
+        const statusDot = document.getElementById('status-dot');
+        const videoLoading = document.getElementById('video-loading');
+        const loadingText = document.getElementById('loading-text');
+        const sidebar = document.getElementById('sidebar');
+        const toggleSidebarBtn = document.getElementById('toggle-sidebar');
+        const mobileOverlay = document.getElementById('mobile-overlay');
+
+        // Toggle Sidebar Logic
+        function toggleSidebar() {
+            const isOpen = sidebar.classList.contains('open');
+            if (isOpen) {
+                sidebar.classList.remove('open');
+                sidebar.classList.add('closed');
+                mobileOverlay.classList.add('hidden');
+                if(document.activeElement && document.activeElement.classList.contains('channel-btn')) {
+                    toggleSidebarBtn.focus();
+                }
+            } else {
+                sidebar.classList.remove('closed');
+                sidebar.classList.add('open');
+                mobileOverlay.classList.remove('hidden');
+                setTimeout(() => searchInput.focus(), 300);
+            }
+        }
+
+        toggleSidebarBtn.addEventListener('click', toggleSidebar);
+        mobileOverlay.addEventListener('click', toggleSidebar);
+
+        // Top Bar Auto-hide Logic
+        function showTopBar() {
+            topBar.classList.remove('opacity-0', '-translate-y-full');
+            topBar.classList.add('opacity-100', 'translate-y-0');
+            resetTopBarTimer();
+        }
+
+        function hideTopBar() {
+            if (player && player.playing) {
+                topBar.classList.remove('opacity-100', 'translate-y-0');
+                topBar.classList.add('opacity-0', '-translate-y-full');
+            }
+        }
+
+        function resetTopBarTimer() {
+            clearTimeout(hideTopBarTimeout);
+            hideTopBarTimeout = setTimeout(hideTopBar, 3000);
+        }
+
+        ['mousemove', 'touchstart', 'click', 'keydown'].forEach(evt => {
+            window.addEventListener(evt, showTopBar);
+        });
+
+        // --- STREAMING_CHUNK:Implementing TV Remote D-Pad Navigation... ---
+        window.addEventListener('keydown', (e) => {
+            const focusable = Array.from(document.querySelectorAll('.tv-focusable:not([disabled])'));
+            const active = document.activeElement;
+            const currentIndex = focusable.indexOf(active);
+
+            showTopBar();
+
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+                e.preventDefault(); // Prevent scrolling
+                
+                if (currentIndex === -1) {
+                    if (sidebar.classList.contains('open')) searchInput.focus();
+                    else toggleSidebarBtn.focus();
+                    return;
+                }
+
+                if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                    let nextIndex = e.key === 'ArrowDown' ? currentIndex + 1 : currentIndex - 1;
+                    if (nextIndex >= 0 && nextIndex < focusable.length) {
+                        focusable[nextIndex].focus();
+                        focusable[nextIndex].scrollIntoView({ block: 'center', behavior: 'smooth' });
+                    }
+                } else if (e.key === 'ArrowLeft') {
+                    if (!sidebar.classList.contains('open')) toggleSidebar();
+                } else if (e.key === 'ArrowRight') {
+                    if (sidebar.classList.contains('open')) {
+                        toggleSidebar();
+                        toggleSidebarBtn.focus();
+                    }
+                }
+            } else if (e.key === 'Enter') {
+                if (active && active.tagName !== 'INPUT') {
+                    e.preventDefault();
+                    active.click();
+                }
+            }
+        });
+
+
+        // --- STREAMING_CHUNK:Fetching and parsing IPTV playlist... ---
+        async function fetchPlaylist() {
+            try {
+                const response = await fetch(PLAYLIST_URL);
+                if (!response.ok) throw new Error('Network response was not ok');
+                const text = await response.text();
+                parseM3U(text);
+                renderChannels(channels);
+                
+                // Automatically find and play "24 News" (or fallback to the first channel)
+                autoPlayChannel('24 news');
+            } catch (error) {
+                console.error("Error fetching playlist:", error);
+                channelListContainer.innerHTML = `
+                    <div class="p-4 bg-red-900/30 border border-red-500/50 rounded-lg text-red-200 m-2">
+                        Failed to load the playlist. Check connection.
+                    </div>`;
+            }
+        }
+
+        function parseM3U(m3uText) {
+            const lines = m3uText.split('\n');
+            let currentChannel = {};
+            let channelIdCounter = 1; // Used to assign a stable sequential number
+
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (line === '') continue;
+
+                if (line.startsWith('#EXTINF:')) {
+                    const logoMatch = line.match(/tvg-logo="([^"]+)"/);
+                    currentChannel.logo = logoMatch ? logoMatch[1] : '';
+
+                    const commaIndex = line.lastIndexOf(',');
+                    currentChannel.name = commaIndex !== -1 ? line.substring(commaIndex + 1).trim() : 'Unknown Channel';
+                } 
+                else if (line.startsWith('http')) {
+                    currentChannel.url = line;
+                    if (currentChannel.name && currentChannel.url) {
+                        // Check if the channel name contains the blocked string
+                        const isBlocked = currentChannel.name.toLowerCase().includes('mazhavil manorama hd (1080p)');
+                        
+                        if (!isBlocked) {
+                            channels.push({ 
+                                ...currentChannel, 
+                                id: channelIdCounter // Assign the sequential number
+                            });
+                            channelIdCounter++; // Increment only for valid channels
+                        }
+                    }
+                    currentChannel = {};
+                }
+            }
+        }
+
+        // --- STREAMING_CHUNK:Rendering channels to sidebar... ---
+        function renderChannels(channelArray) {
+            channelListContainer.innerHTML = '';
+            if (channelArray.length === 0) {
+                channelListContainer.innerHTML = '<div class="text-center text-gray-500 p-4">No channels found.</div>';
+                return;
+            }
+
+            channelArray.forEach((channel) => {
+                const btn = document.createElement('button');
+                btn.className = `tv-focusable channel-btn w-full flex items-center gap-3 p-3 mb-1 text-left rounded-xl transition-all duration-200 hover:bg-gray-800 focus:outline-none group border border-transparent`;
+                btn.tabIndex = 0; 
+                btn.setAttribute('data-id', channel.id); // Store ID for easy lookup
+                
+                const logoHtml = channel.logo 
+                    ? `<img src="${channel.logo}" alt="" class="w-12 h-12 object-contain rounded-lg bg-white/10 shadow-inner" onerror="this.outerHTML='<div class=\\'w-12 h-12 bg-gray-800 rounded-lg flex items-center justify-center text-sm font-bold text-gray-500\\'>TV</div>'">` 
+                    : `<div class="w-12 h-12 bg-gray-800 rounded-lg flex items-center justify-center text-sm font-bold text-gray-500 transition-colors">TV</div>`;
+
+                btn.innerHTML = `
+                    <span class="text-sm font-mono text-gray-500 w-6 shrink-0 text-right select-none">${channel.id}</span>
+                    ${logoHtml}
+                    <div class="flex-1 overflow-hidden">
+                        <h4 class="font-semibold text-gray-300 group-hover:text-white group-focus:text-white truncate text-lg">${channel.name}</h4>
+                    </div>
+                `;
+
+                btn.onclick = () => {
+                    if (activeChannelBtn) {
+                        activeChannelBtn.classList.remove('bg-brand-600/20', 'border-brand-500/50');
+                        activeChannelBtn.classList.add('hover:bg-gray-800');
+                    }
+                    btn.classList.remove('hover:bg-gray-800');
+                    btn.classList.add('bg-brand-600/20', 'border-brand-500/50');
+                    activeChannelBtn = btn;
+
+                    // Close sidebar automatically on mobile/TV
+                    if (window.innerWidth < 768 || window.navigator.userAgent.toLowerCase().includes('tv')) {
+                        toggleSidebar();
+                    }
+
+                    playStream(channel.url, channel.name);
+                };
+                channelListContainer.appendChild(btn);
+            });
+        }
+        
+        function autoPlayChannel(keyword) {
+            // Find the targeted channel by name
+            const targetChannel = channels.find(c => c.name.toLowerCase().includes(keyword.toLowerCase()));
+            
+            // If found, click its corresponding button
+            if (targetChannel) {
+                const targetBtn = document.querySelector(`.channel-btn[data-id="${targetChannel.id}"]`);
+                if (targetBtn) {
+                    targetBtn.click();
+                    targetBtn.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                }
+            } else if (channels.length > 0) {
+                // Fallback: If 24 News isn't found, just play the very first channel (ID: 1)
+                const firstBtn = document.querySelector(`.channel-btn[data-id="${channels[0].id}"]`);
+                if (firstBtn) firstBtn.click();
+            }
+        }
+
+        // --- STREAMING_CHUNK:Configuring robust HLS & Plyr initialization... ---
+        function playStream(url, channelName) {
+            // Reset UI to Loading state immediately
+            nowPlayingTitle.textContent = `Loading ${channelName}...`;
+            loadingText.textContent = `Tuning to ${channelName}...`;
+            setLoading(true);
+
+            // Destroy old instances to fix channel switching issues
+            if (player) {
+                player.destroy();
+                player = null;
+            }
+            if (hls) {
+                hls.destroy();
+                hls = null;
+            }
+
+            // Clear and recreate video element for a fresh start
+            videoContainer.innerHTML = '<video id="video-player" playsinline controls></video>';
+            const videoElement = document.getElementById('video-player');
+            videoElement.removeAttribute('src');
+            videoElement.load();
+
+            if (Hls.isSupported()) {
+                hls = new Hls({ maxLiveSyncPlaybackRate: 1.5 });
+                hls.loadSource(url);
+                hls.attachMedia(videoElement);
+
+                hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                    const availableQualities = hls.levels.map((l) => l.height);
+                    availableQualities.unshift(-1); // Auto option
+
+                    player = new Plyr(videoElement, {
+                        controls: ['play-large', 'play', 'mute', 'volume', 'settings', 'pip', 'airplay', 'fullscreen'],
+                        settings: ['quality'],
+                        quality: {
+                            default: -1,
+                            options: availableQualities,
+                            forced: true,
+                            onChange: (newQuality) => {
+                                hls.currentLevel = newQuality === -1 ? -1 : hls.levels.findIndex(l => l.height === newQuality);
+                            }
+                        },
+                        i18n: { qualityLabel: { 0: 'Auto', '-1': 'Auto' } }
+                    });
+
+                    player.on('playing', () => {
+                        nowPlayingTitle.textContent = channelName;
+                        setLoading(false);
+                        setPlayingState();
+                        hideTopBar();
+                    });
+                    player.on('pause', showTopBar);
+                    
+                    const playPromise = player.play();
+                    if (playPromise !== undefined) {
+                        playPromise.catch(() => setLoading(false));
+                    }
+                });
+                
+                // Catch network/CORS/dead stream errors to update UI
+                hls.on(Hls.Events.ERROR, function (event, data) {
+                    if (data.fatal) {
+                        switch (data.type) {
+                            case Hls.ErrorTypes.NETWORK_ERROR:
+                                console.error("Fatal network error: Stream might be dead or blocked by CORS.");
+                                setErrorState(channelName);
+                                hls.destroy(); 
+                                break;
+                            case Hls.ErrorTypes.MEDIA_ERROR:
+                                hls.recoverMediaError(); 
+                                break;
+                            default:
+                                setErrorState(channelName);
+                                hls.destroy(); 
+                                break;
+                        }
+                    }
+                });
+            } 
+            else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
+                // Native Safari fallback
+                videoElement.src = url;
+                player = new Plyr(videoElement, {
+                    controls: ['play-large', 'play', 'mute', 'volume', 'pip', 'airplay', 'fullscreen']
+                });
+                
+                player.on('playing', () => { 
+                    nowPlayingTitle.textContent = channelName;
+                    setLoading(false); 
+                    setPlayingState(); 
+                    hideTopBar(); 
+                });
+                player.on('pause', showTopBar);
+                
+                const playPromise = player.play();
+                if (playPromise !== undefined) {
+                    playPromise.catch(() => setLoading(false));
+                }
+                
+                videoElement.addEventListener('error', () => setErrorState(channelName));
+            }
+        }
+
+        // --- STREAMING_CHUNK:UI Status Helpers... ---
+        function setLoading(isLoading) {
+            if (isLoading) {
+                videoLoading.classList.remove('hidden');
+                statusPing.classList.add('hidden');
+                statusDot.className = 'relative inline-flex rounded-full h-3 w-3 bg-yellow-500';
+            } else {
+                videoLoading.classList.add('hidden');
+            }
+        }
+
+        function setPlayingState() {
+            statusPing.classList.remove('hidden');
+            statusDot.className = 'relative inline-flex rounded-full h-3 w-3 bg-brand-500';
+        }
+
+        function setErrorState(channelName) {
+            setLoading(false);
+            statusPing.classList.add('hidden');
+            statusDot.className = 'relative inline-flex rounded-full h-3 w-3 bg-red-500';
+            nowPlayingTitle.textContent = `${channelName} (Stream Unavailable)`;
+        }
+
+        // Search functionality
+        searchInput.addEventListener('input', (e) => {
+            const term = e.target.value.toLowerCase();
+            const filtered = channels.filter(c => c.name.toLowerCase().includes(term));
+            renderChannels(filtered);
+        });
+
+        // Initialize App
+        fetchPlaylist();
+        
+        // Initial Sidebar state based on screen size
+        if (window.innerWidth < 768) {
+            sidebar.classList.remove('open');
+            sidebar.classList.add('closed');
+            mobileOverlay.classList.add('hidden');
+        }
+        resetTopBarTimer();
+    </script>
+</body>
+</html>
