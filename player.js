@@ -16,9 +16,36 @@ document.addEventListener('DOMContentLoaded', () => {
     let hls = null;
     let topBarTimeout;
 
-    // 1. Initialize Plyr ONCE globally
+    // 1. Initialize Plyr ONCE globally WITH the Quality Selector
     const player = new Plyr(video, {
-        controls: ['play', 'mute', 'volume', 'fullscreen']
+        controls: ['play', 'mute', 'volume', 'settings', 'fullscreen'],
+        settings: ['quality'], // Enabled Quality Settings Menu
+        quality: {
+            default: 1080,
+            options: [1080, 720, 480, 360], // Standard resolutions
+            forced: true,
+            onChange: (newQuality) => {
+                if (!hls) return;
+                
+                let bestMatchIndex = -1;
+                let minDiff = Infinity;
+                
+                // Scan the HLS stream for the closest matching resolution
+                hls.levels.forEach((level, index) => {
+                    if (level.height) {
+                        let diff = Math.abs(level.height - newQuality);
+                        if (diff < minDiff) {
+                            minDiff = diff;
+                            bestMatchIndex = index;
+                        }
+                    }
+                });
+
+                // Apply the exact or closest resolution. 
+                // If the stream is cheap/single-resolution, it defaults to Auto (-1) safely.
+                hls.currentLevel = bestMatchIndex !== -1 ? bestMatchIndex : -1;
+            }
+        }
     });
 
     // 2. Fetch & Parse Playlist
@@ -88,7 +115,7 @@ document.addEventListener('DOMContentLoaded', () => {
             sidebar.classList.remove('open');
         }
 
-        // DESTROY OLD HLS STREAM ONLY (Leave Plyr intact)
+        // DESTROY OLD HLS STREAM ONLY (Keeps the Plyr UI & Quality Menu intact)
         if (hls) { 
             hls.destroy(); 
             hls = null; 
